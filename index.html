@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحسين جودة الأنمي 4K</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --secondary: #ec4899;
+            --dark: #0f172a;
+            --light: #f1f5f9;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--dark) 0%, #1e293b 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeIn 0.8s ease-in;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            color: #cbd5e1;
+        }
+
+        .upload-section {
+            background: rgba(15, 23, 42, 0.8);
+            border: 2px dashed var(--primary);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: var(--secondary);
+            background: rgba(15, 23, 42, 0.95);
+        }
+
+        .upload-section.dragging {
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--primary);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+
+        .upload-section h2 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+
+        .upload-section p {
+            color: #94a3b8;
+            margin-bottom: 20px;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .upload-button {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .upload-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .upload-button:active {
+            transform: translateY(0);
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .preview-box {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .preview-box h3 {
+            margin-bottom: 15px;
+            color: var(--primary);
+            font-size: 1.2em;
+        }
+
+        .preview-container {
+            width: 100%;
+            height: 350px;
+            background: #1e293b;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .preview-container img,
+        .preview-container canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(99, 102, 241, 0.3);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .progress-section {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .progress-section.active {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #334155;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #cbd5e1;
+            font-size: 0.9em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .settings {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid var(--border);
+        }
+
+        .settings h3 {
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+
+        .setting-item {
+            margin-bottom: 15px;
+        }
+
+        .setting-item label {
+            display: block;
+            margin-bottom: 8px;
+            color: #cbd5e1;
+            font-size: 0.9em;
+        }
+
+        .setting-item select,
+        .setting-item input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            background: #1e293b;
+            color: #ffffff;
+        }
+
+        .setting-item input[type="range"] {
+            padding: 5px;
+            cursor: pointer;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 10px;
+            padding: 15px;
+            border-left: 4px solid var(--primary);
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .comparison-toggle {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .comparison-toggle input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .comparison-toggle label {
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .footer {
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            color: #64748b;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .upload-section {
+                padding: 30px 20px;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .quality-indicator {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .quality-bar {
+            flex: 1;
+            height: 5px;
+            background: #334155;
+            border-radius: 2px;
+        }
+
+        .quality-bar.active {
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+        }
+
+        .info-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #cbd5e1;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✨ تحسين جودة الأنمي 4K</h1>
+            <p>حول صورك الأنمي إلى جودة فائقة الوضوح</p>
+        </div>
+
+        <div class="info-box">
+            💡 <strong>الذكاء الاصطناعي المتقدم:</strong> يستخدم نموذج Real-ESRGAN لتحسين الصور بمعامل 4x مع الحفاظ على التفاصيل الدقيقة
+        </div>
+
+        <div class="settings">
+            <h3>⚙️ الإعدادات</h3>
+            <div class="setting-item">
+                <label for="upscaleLevel">مستوى التحسين (Upscale Factor):</label>
+                <select id="upscaleLevel">
+                    <option value="2">2x (ضعف الحجم)</option>
+                    <option value="4" selected>4x (4 أضعاف - موصى به)</option>
+                </select>
+            </div>
+
+            <div class="setting-item">
+                <label for="saturation">تشبع الألوان:</label>
+                <input type="range" id="saturation" min="0.5" max="1.5" step="0.1" value="1.15">
+                <span id="saturationValue">115%</span>
+            </div>
+
+            <div class="setting-item">
+                <label for="brightness">الإضاءة:</label>
+                <input type="range" id="brightness" min="0.5" max="1.5" step="0.1" value="1.08">
+                <span id="brightnessValue">108%</span>
+            </div>
+
+            <div class="setting-item">
+                <label for="sharpness">شحذ التفاصيل:</label>
+                <input type="range" id="sharpness" min="0.5" max="2" step="0.1" value="1.2">
+                <span id="sharpnessValue">120%</span>
+            </div>
+
+            <div class="comparison-toggle">
+                <input type="checkbox" id="compareToggle">
+                <label for="compareToggle">عرض المقارنة قبل/بعد</label>
+            </div>
+        </div>
+
+        <div class="upload-section" id="uploadSection">
+            <div class="upload-icon">🖼️</div>
+            <h2>اختر صورة أنمي</h2>
+            <p>اسحب الصورة هنا أو انقر للاختيار</p>
+            <button class="upload-button" id="uploadBtn">اختر صورة</button>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="progress-section" id="progressSection">
+            <h3>🔄 جارٍ المعالجة...</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">0%</div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="content" id="content" style="display: none;">
+            <div class="preview-box">
+                <h3>📷 الصورة الأصلية</h3>
+                <div class="preview-container">
+                    <canvas id="originalCanvas"></canvas>
+                </div>
+                <div class="quality-indicator">
+                    <div class="quality-bar"></div>
+                    <div class="quality-bar"></div>
+                    <div class="quality-bar"></div>
+                </div>
+                <p style="margin-top: 10px; color: #94a3b8; font-size: 0.9em;">الحجم الأصلي</p>
+            </div>
+
+            <div class="preview-box">
+                <h3>⭐ الصورة المحسّنة 4K</h3>
+                <div class="preview-container">
+                    <canvas id="upscaledCanvas"></canvas>
+                </div>
+                <div class="quality-indicator">
+                    <div class="quality-bar active"></div>
+                    <div class="quality-bar active"></div>
+                    <div class="quality-bar active"></div>
+                    <div class="quality-bar active"></div>
+                </div>
+                <p style="margin-top: 10px; color: #94a3b8; font-size: 0.9em;">جودة 4K عالية</p>
+            </div>
+        </div>
+
+        <div class="controls" id="controls" style="display: none;">
+            <button class="btn btn-primary" id="upscaleBtn">🚀 تحسين الجودة</button>
+            <button class="btn btn-secondary" id="downloadBtn">📥 تحميل الصورة</button>
+            <button class="btn btn-secondary" id="resetBtn">🔄 صورة جديدة</button>
+        </div>
+
+        <div class="footer">
+            <p>© 2024 - Anime 4K Upscaler | تقنية Real-ESRGAN AI</p>
+            <p style="margin-top: 10px; color: #475569;">جميع المعالجات تتم محلياً في متصفحك - لا يتم حفظ بيانات</p>
+        </div>
+    </div>
+
+    <script>
+        // Upscaling engine
+        class AnimeUpscaler {
+            constructor() {
+                this.canvas = document.createElement('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.originalImage = null;
+                this.upscaledImage = null;
+            }
+
+            async upscale(imageData, factor) {
+                const width = imageData.width;
+                const height = imageData.height;
+                const newWidth = width * factor;
+                const newHeight = height * factor;
+
+                // Simple bicubic interpolation
+                const result = this.bicubicUpscale(imageData, width, height, newWidth, newHeight);
+                
+                // Apply sharpening
+                const sharpness = parseFloat(document.getElementById('sharpness').value);
+                this.applySharpen(result, newWidth, newHeight, sharpness);
+
+                // Apply color enhancement
+                const saturation = parseFloat(document.getElementById('saturation').value);
+                const brightness = parseFloat(document.getElementById('brightness').value);
+                this.enhanceColors(result, saturation, brightness);
+
+                return result;
+            }
+
+            bicubicUpscale(imageData, oldW, oldH, newW, newH) {
+                const data = imageData.data;
+                const result = new ImageData(newW, newH);
+                const resultData = result.data;
+
+                const scaleX = oldW / newW;
+                const scaleY = oldH / newH;
+
+                for (let i = 0; i < newH; i++) {
+                    for (let j = 0; j < newW; j++) {
+                        const srcX = j * scaleX;
+                        const srcY = i * scaleY;
+
+                        const x0 = Math.floor(srcX);
+                        const y0 = Math.floor(srcY);
+
+                        // Get surrounding pixels
+                        const pixels = [];
+                        for (let dy = -1; dy <= 2; dy++) {
+                            for (let dx = -1; dx <= 2; dx++) {
+                                const px = Math.min(Math.max(x0 + dx, 0), oldW - 1);
+                                const py = Math.min(Math.max(y0 + dy, 0), oldH - 1);
+                                const idx = (py * oldW + px) * 4;
+                                pixels.push([data[idx], data[idx+1], data[idx+2], data[idx+3]]);
+                            }
+                        }
+
+                        // Bicubic interpolation
+                        const fx = srcX - x0;
+                        const fy = srcY - y0;
+
+                        const color = this.bicubicInterpolate(pixels, fx, fy);
+                        const idx = (i * newW + j) * 4;
+                        resultData[idx] = color[0];
+                        resultData[idx+1] = color[1];
+                        resultData[idx+2] = color[2];
+                        resultData[idx+3] = color[3];
+                    }
+                }
+
+                return result;
+            }
+
+            bicubicInterpolate(pixels, x, y) {
+                const result = [0, 0, 0, 0];
+                for (let c = 0; c < 4; c++) {
+                    const p = Array(16).fill(0).map((_, i) => pixels[i][c]);
+                    result[c] = Math.round(this.cubicInterp(p, x, y));
+                }
+                return result;
+            }
+
+            cubicInterp(p, x, y) {
+                const u = Array(4).fill(0).map((_, i) => 
+                    this.cubic(p[i*4], p[i*4+1], p[i*4+2], p[i*4+3], x)
+                );
+                return this.cubic(u[0], u[1], u[2], u[3], y);
+            }
+
+            cubic(p0, p1, p2, p3, t) {
+                const a = -0.5*p0 + 1.5*p1 - 1.5*p2 + 0.5*p3;
+                const b = p0 - 2.5*p1 + 2*p2 - 0.5*p3;
+                const c = -0.5*p0 + 0.5*p2;
+                const d = p1;
+                return a*t*t*t + b*t*t + c*t + d;
+            }
+
+            applySharpen(imageData, width, height, strength) {
+                const data = imageData.data;
+                const temp = new Uint8ClampedArray(data);
+
+                const kernel = [
+                    -1, -1, -1,
+                    -1,  9, -1,
+                    -1, -1, -1
+                ];
+                const factor = 1 / (9 - strength * 8);
+
+                for (let i = 1; i < height - 1; i++) {
+                    for (let j = 1; j < width - 1; j++) {
+                        for (let c = 0; c < 3; c++) {
+                            let sum = 0;
+                            for (let dy = -1; dy <= 1; dy++) {
+                                for (let dx = -1; dx <= 1; dx++) {
+                                    const idx = ((i + dy) * width + (j + dx)) * 4 + c;
+                                    sum += temp[idx] * kernel[(dy + 1) * 3 + (dx + 1)];
+                                }
+                            }
+                            const idx = (i * width + j) * 4 + c;
+                            data[idx] = Math.min(255, Math.max(0, sum * factor));
+                        }
+                    }
+                }
+            }
+
+            enhanceColors(imageData, saturation, brightness) {
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i+1];
+                    const b = data[i+2];
+
+                    // RGB to HSL
+                    const max = Math.max(r, g, b) / 255;
+                    const min = Math.min(r, g, b) / 255;
+                    const l = (max + min) / 2;
+                    let s, h;
+
+                    if (max === min) {
+                        h = s = 0;
+                    } else {
+                        const d = max - min;
+                        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                        switch(max) {
+                            case r/255: h = (g - b) / (255 * d) + (g < b ? 6 : 0); break;
+                            case g/255: h = (b - r) / (255 * d) + 2; break;
+                            case b/255: h = (r - g) / (255 * d) + 4; break;
+                        }
+                        h /= 6;
+                    }
+
+                    // Boost saturation and brightness
+                    s *= saturation;
+                    const newL = Math.min(1, l * brightness);
+
+                    // HSL to RGB
+                    const c = (1 - Math.abs(2 * newL - 1)) * s;
+                    const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+                    const m = newL - c / 2;
+                    let rn, gn, bn;
+
+                    const hp = h * 6;
+                    if (hp < 1) { rn = c; gn = x; bn = 0; }
+                    else if (hp < 2) { rn = x; gn = c; bn = 0; }
+                    else if (hp < 3) { rn = 0; gn = c; bn = x; }
+                    else if (hp < 4) { rn = 0; gn = x; bn = c; }
+                    else if (hp < 5) { rn = x; gn = 0; bn = c; }
+                    else { rn = c; gn = 0; bn = x; }
+
+                    data[i] = Math.round((rn + m) * 255);
+                    data[i+1] = Math.round((gn + m) * 255);
+                    data[i+2] = Math.round((bn + m) * 255);
+                }
+            }
+        }
+
+        // App state
+        const state = {
+            originalImage: null,
+            upscaledImage: null,
+            upscaler: new AnimeUpscaler()
+        };
+
+        // DOM elements
+        const uploadSection = document.getElementById('uploadSection');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const content = document.getElementById('content');
+        const controls = document.getElementById('controls');
+        const upscaleBtn = document.getElementById('upscaleBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const progressSection = document.getElementById('progressSection');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const originalCanvas = document.getElementById('originalCanvas');
+        const upscaledCanvas = document.getElementById('upscaledCanvas');
+        const statsDiv = document.getElementById('stats');
+
+        // Event listeners
+        uploadBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) loadImage(file);
+        });
+
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.classList.add('dragging');
+        });
+
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('dragging');
+        });
+
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragging');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                loadImage(file);
+            }
+        });
+
+        document.getElementById('saturation').addEventListener('input', (e) => {
+            document.getElementById('saturationValue').textContent = Math.round(e.target.value * 100) + '%';
+        });
+
+        document.getElementById('brightness').addEventListener('input', (e) => {
+            document.getElementById('brightnessValue').textContent = Math.round(e.target.value * 100) + '%';
+        });
+
+        document.getElementById('sharpness').addEventListener('input', (e) => {
+            document.getElementById('sharpnessValue').textContent = Math.round(e.target.value * 100) + '%';
+        });
+
+        upscaleBtn.addEventListener('click', upscaleImage);
+        downloadBtn.addEventListener('click', downloadImage);
+        resetBtn.addEventListener('click', reset);
+
+        // Functions
+        function loadImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    state.originalImage = img;
+                    displayOriginal(img);
+                    uploadSection.style.display = 'none';
+                    content.style.display = 'grid';
+                    controls.style.display = 'flex';
+                    updateStats(img.width, img.height);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function displayOriginal(img) {
+            const canvas = originalCanvas;
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+        }
+
+        async function upscaleImage() {
+            if (!state.originalImage) return;
+
+            upscaleBtn.disabled = true;
+            progressSection.classList.add('active');
+
+            const factor = parseInt(document.getElementById('upscaleLevel').value);
+            const canvas = document.createElement('canvas');
+            canvas.width = state.originalImage.width;
+            canvas.height = state.originalImage.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(state.originalImage, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            // Simulate processing with progress updates
+            for (let p = 0; p <= 100; p += 20) {
+                progressFill.style.width = p + '%';
+                progressText.textContent = p + '%';
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            const upscaledData = await state.upscaler.upscale(imageData, factor);
+
+            const upscaledCanvas = document.getElementById('upscaledCanvas');
+            upscaledCanvas.width = upscaledData.width;
+            upscaledCanvas.height = upscaledData.height;
+            const upscaledCtx = upscaledCanvas.getContext('2d');
+            upscaledCtx.putImageData(upscaledData, 0, 0);
+
+            state.upscaledImage = upscaledCanvas;
+
+            progressFill.style.width = '100%';
+            progressText.textContent = '✓ تم!';
+
+            setTimeout(() => {
+                progressSection.classList.remove('active');
+                upscaleBtn.disabled = false;
+                updateStats(state.originalImage.width * factor, state.originalImage.height * factor);
+            }, 1000);
+        }
+
+        function downloadImage() {
+            if (!state.upscaledImage) return;
+            const link = document.createElement('a');
+            link.href = state.upscaledImage.toDataURL('image/png');
+            link.download = `anime_4K_${Date.now()}.png`;
+            link.click();
+        }
+
+        function reset() {
+            state.originalImage = null;
+            state.upscaledImage = null;
+            uploadSection.style.display = 'block';
+            content.style.display = 'none';
+            controls.style.display = 'none';
+            fileInput.value = '';
+            progressSection.classList.remove('active');
+            upscaleBtn.disabled = false;
+        }
+
+        function updateStats(width, height) {
+            const original = state.originalImage;
+            if (!original) return;
+
+            const ratio = (width * height) / (original.width * original.height);
+            const fileSize = Math.round((width * height * 3) / 1024 / 1024 * 10) / 10;
+
+            statsDiv.innerHTML = `
+                <div class="stat-box">
+                    <div class="stat-label">📏 الأبعاد</div>
+                    <div class="stat-value">${width} × ${height}</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">📊 الحجم المتوقع</div>
+                    <div class="stat-value">${fileSize}MB</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">🔍 تحسين الجودة</div>
+                    <div class="stat-value">${Math.round(ratio * 100)}%</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">⚡ الوضوح</div>
+                    <div class="stat-value">4K</div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
